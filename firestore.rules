@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Checking if user is verified admin
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == "phone" || request.auth.token.firebase.sign_in_provider == "anonymous");
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "saidsalum076660@gmail.com" || 
+        request.auth.token.email == "admin@kingatv.com"
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User document validation
+    function isValidUser(user) {
+      return user.uid == request.auth.uid 
+        && user.email is string 
+        && user.name is string 
+        && user.name.size() <= 100
+        && user.status in ["PENDING", "ACTIVE", "BLOCKED"]
+        && user.freeSecondsRemaining is number
+        && user.freeSecondsRemaining >= 0
+        && user.freeSecondsRemaining <= 125;
+    }
+
+    // User collection rules
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      
+      // Creating an account forces PENDING status and 120 seconds free trial
+      allow create: if isSignedIn() 
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.status == "PENDING"
+        && request.resource.data.freeSecondsRemaining == 120
+        && request.resource.data.createdAt != null;
+        
+      // Users can only update their freeSecondsRemaining (trials)
+      // Admins can update all fields including status
+      allow update: if isSignedIn() && (
+        isAdmin() || (
+          request.auth.uid == userId 
+          && request.resource.data.status == resource.data.status // cannot self-approve
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.freeSecondsRemaining is number
+          && request.resource.data.freeSecondsRemaining <= resource.data.freeSecondsRemaining // countdown only
+        )
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    // Channels Collection
+    match /channels/{channelId} {
+      allow read: if isSignedIn();
+      allow write, create, update, delete: if isAdmin();
+    }
+
+    // Slideshow Collection
+    match /slideshow/{slideId} {
+      allow read: if isSignedIn();
+      allow write, create, update, delete: if isAdmin();
+    }
+
+    // Matches Collection
+    match /matches/{matchId} {
+      allow read: if isSignedIn();
+      allow write, create, update, delete: if isAdmin();
+    }
+
+    // Settings Collection (Global settings)
+    match /settings/global {
+      allow read: if isSignedIn();
+      allow write, create, update: if isAdmin();
+    }
+
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn();
+      allow write, create, update, delete: if isAdmin();
+    }
+  }
+}

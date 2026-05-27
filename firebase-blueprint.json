@@ -1,0 +1,257 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account schema representing normal users and their subscription states.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique auth UID of the user"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the user"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Phone number of the user"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the user"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDING", "ACTIVE", "BLOCKED"],
+          "description": "Trial or payment approval status of the user"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Account registration timestamp"
+        },
+        "freeSecondsRemaining": {
+          "type": "number",
+          "description": "Remaining free trial streaming seconds. Default is 120."
+        },
+        "subscriptionExpiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional timestamp when user active subscription expires"
+        },
+        "approvedByAdmin": {
+          "type": "boolean",
+          "description": "Whether payment has been approved by the admin"
+        }
+      },
+      "required": ["uid", "email", "name", "status", "createdAt", "freeSecondsRemaining"]
+    },
+    "Channel": {
+      "title": "Streaming Channel",
+      "description": "Video stream channel configured by the administrator.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique channel ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "User-friendly name of the channel"
+        },
+        "logo": {
+          "type": "string",
+          "description": "URL for the channel logo/icon"
+        },
+        "poster": {
+          "type": "string",
+          "description": "URL for the channel background poster"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the channel"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category for filters (e.g. Sports, Movies, General)"
+        },
+        "order": {
+          "type": "number",
+          "description": "Custom sorting order"
+        },
+        "streamType": {
+          "type": "string",
+          "enum": ["hls", "mpd", "mp4", "ts"],
+          "description": "Streaming link type"
+        },
+        "streamUrl": {
+          "type": "string",
+          "description": "Custom manually added streaming URL"
+        },
+        "clearKeyKid": {
+          "type": "string",
+          "description": "Optional DRM Clearkey ID (hex)"
+        },
+        "clearKeyKey": {
+          "type": "string",
+          "description": "Optional DRM Clearkey Value (hex)"
+        },
+        "useGlobalToken": {
+          "type": "boolean",
+          "description": "Whether to append the global token"
+        }
+      },
+      "required": ["id", "name", "streamType", "streamUrl", "order"]
+    },
+    "SlideshowItem": {
+      "title": "Homepage Slide",
+      "description": "Slide featured on the home page slideshow carousel.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique slide ID"
+        },
+        "image": {
+          "type": "string",
+          "description": "URL of the slide image"
+        },
+        "title": {
+          "type": "string",
+          "description": "Headline text"
+        },
+        "matchInfo": {
+          "type": "string",
+          "description": "Subtext featuring match info or general description"
+        },
+        "channelId": {
+          "type": "string",
+          "description": "Target channel ID to launch upon click"
+        },
+        "order": {
+          "type": "number",
+          "description": "Sorting order"
+        }
+      },
+      "required": ["id", "image", "title", "channelId", "order"]
+    },
+    "Match": {
+      "title": "Match Schedule",
+      "description": "Sports match entry displayed in the matches list and home.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique match ID"
+        },
+        "teamAName": {
+          "type": "string",
+          "description": "Name of Team A"
+        },
+        "teamALogo": {
+          "type": "string",
+          "description": "Logo URL of Team A"
+        },
+        "teamBName": {
+          "type": "string",
+          "description": "Name of Team B"
+        },
+        "teamBLogo": {
+          "type": "string",
+          "description": "Logo URL of Team B"
+        },
+        "time": {
+          "type": "string",
+          "description": "Time of match (e.g. 21:00)"
+        },
+        "date": {
+          "type": "string",
+          "description": "Date of match (e.g. 2026-05-25)"
+        },
+        "channelId": {
+          "type": "string",
+          "description": "Target live channel ID for streaming this match"
+        },
+        "isFeatured": {
+          "type": "boolean",
+          "description": "Highlight on homepage"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["LIVE", "UPCOMING", "FINISHED"],
+          "description": "Live coverage state"
+        },
+        "score": {
+          "type": "string",
+          "description": "Live or final score (e.g. 1-0)"
+        }
+      },
+      "required": ["id", "teamAName", "teamBName", "time", "date", "status"]
+    },
+    "GlobalConfig": {
+      "title": "Global System Settings",
+      "description": "Central dashboard configuration for global parameters and announcements.",
+      "type": "object",
+      "properties": {
+        "globalToken": {
+          "type": "string",
+          "description": "String/query-param token to be appended to streaming URLs (mpd/hls)"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["globalToken"]
+    },
+    "Notification": {
+      "title": "System Announcement",
+      "description": "Central announcement push item dispatched from the admin panel.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title", "message", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User accounts with their respective access codes and timers"
+    },
+    "channels/{channelId}": {
+      "schema": "Channel",
+      "description": "Streaming channels customized by the admin"
+    },
+    "slideshow/{slideId}": {
+      "schema": "SlideshowItem",
+      "description": "Carousel slide items with associated media"
+    },
+    "matches/{matchId}": {
+      "schema": "Match",
+      "description": "Scheduled live and upcoming games"
+    },
+    "settings/global": {
+      "schema": "GlobalConfig",
+      "description": "Global DRM/URL suffix tokens"
+    },
+    "notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Global push notifications/announcements broadcasted to all streaming users"
+    }
+  }
+}

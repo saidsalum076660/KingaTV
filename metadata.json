@@ -1,0 +1,6 @@
+{
+  "name": "KINGA TV",
+  "description": "KINGA TV is a full mobile streaming application featuring a dynamic homepage slideshow, match schedules, live channels, full admin management, and a 2-minute free trial PENDING/ACTIVE subscription verification system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
