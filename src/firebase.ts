@@ -4,12 +4,186 @@
  */
 
 import { Channel, SlideshowItem, Match, UserProfile, UserStatus, GlobalConfig, SystemNotification } from "./types";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  onSnapshot,
+  getDocFromServer
+} from "firebase/firestore";
 
-// Dynamic check for Firebase config file
-let firebaseApp: any = null;
-let firestoreDb: any = null;
-let firebaseAuth: any = null;
-let isRealFirebase = false;
+const firebaseConfig = {
+  apiKey: "AIzaSyD6gUL9GPdo2xjxqPcFZo_E64OwwE0_Kqw",
+  authDomain: "kingatv-d5189.firebaseapp.com",
+  projectId: "kingatv-d5189",
+  storageBucket: "kingatv-d5189.firebasestorage.app",
+  messagingSenderId: "697366143552",
+  appId: "1:697366143552:web:92cf70a0901aec4b48f5a5"
+};
+
+const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+export const firebaseAuthInstance = getAuth(firebaseApp);
+export const firestoreDb = getFirestore(firebaseApp);
+const isRealFirebase = true;
+
+// Firestore Error Handling utilities
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: firebaseAuthInstance.currentUser?.uid,
+      email: firebaseAuthInstance.currentUser?.email,
+      emailVerified: firebaseAuthInstance.currentUser?.emailVerified,
+      isAnonymous: firebaseAuthInstance.currentUser?.isAnonymous,
+      tenantId: firebaseAuthInstance.currentUser?.tenantId,
+      providerInfo: firebaseAuthInstance.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error("Firestore Error details: ", JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Connection check as required by Firebase skill
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(firestoreDb, 'test', 'connection'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration or internet connection.");
+    }
+  }
+}
+testConnection();
+
+// Write helpers
+export async function fsSaveChannel(channel: Channel) {
+  try {
+    const { ...plain } = channel;
+    await setDoc(doc(firestoreDb, "channels", channel.id), plain);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `channels/${channel.id}`);
+  }
+}
+
+export async function fsDeleteChannel(id: string) {
+  try {
+    await deleteDoc(doc(firestoreDb, "channels", id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `channels/${id}`);
+  }
+}
+
+export async function fsSaveSlide(slide: SlideshowItem) {
+  try {
+    const { ...plain } = slide;
+    await setDoc(doc(firestoreDb, "slideshow", slide.id), plain);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `slideshow/${slide.id}`);
+  }
+}
+
+export async function fsDeleteSlide(id: string) {
+  try {
+    await deleteDoc(doc(firestoreDb, "slideshow", id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `slideshow/${id}`);
+  }
+}
+
+export async function fsSaveMatch(match: Match) {
+  try {
+    const { ...plain } = match;
+    await setDoc(doc(firestoreDb, "matches", match.id), plain);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `matches/${match.id}`);
+  }
+}
+
+export async function fsDeleteMatch(id: string) {
+  try {
+    await deleteDoc(doc(firestoreDb, "matches", id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `matches/${id}`);
+  }
+}
+
+export async function fsSaveConfig(config: GlobalConfig) {
+  try {
+    const { ...plain } = config;
+    await setDoc(doc(firestoreDb, "settings", "global"), plain);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, "settings/global");
+  }
+}
+
+export async function fsSaveNotification(notif: SystemNotification) {
+  try {
+    const { ...plain } = notif;
+    await setDoc(doc(firestoreDb, "notifications", notif.id), plain);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `notifications/${notif.id}`);
+  }
+}
+
+export async function fsDeleteNotification(id: string) {
+  try {
+    await deleteDoc(doc(firestoreDb, "notifications", id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `notifications/${id}`);
+  }
+}
+
+export async function fsSaveUser(user: UserProfile) {
+  try {
+    const { ...plain } = user;
+    await setDoc(doc(firestoreDb, "users", user.uid), plain);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+  }
+}
+
+export async function fsDeleteUser(uid: string) {
+  try {
+    await deleteDoc(doc(firestoreDb, "users", uid));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `users/${uid}`);
+  }
+}
 
 // Default initial database content for KINGA TV
 const DEFAULT_CHANNELS: Channel[] = [
@@ -131,8 +305,8 @@ const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   globalToken: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJleHAiOjE3Nzk3NDkxODUsInNpcCI6IjE4LjY4LjI4LjQ5In0.eZCM6Os5lY3JI9OgxQxiiafRlzN955irkOkp0LxCGBGAMPmaJzaq_RQP-XE5QB_BXEzHAkSmYvMPLX8-LwJBZQ",
   appLogo: "",
   supabaseUrl: "https://axemqydlmyiacilzduge.supabase.co",
-  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4ZW1xeWRsbXlpYWNpbHpkdWdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2OTUxMDAsImV4cCI6MjA5NTI3MTEwMH0.95kYXcp-2l38qH3uedp6Zt12He-nuIpxEFvb3bXt9Ac",
-  updatedAt: new Date().toISOString(),
+  supabaseAnonKey: "sb_publishable_rUpbgSlp-1xauhgjdf-ozw_TzfLnvy_",
+  updatedAt: "2020-01-01T00:00:00Z",
   slideshowIntervalSeconds: 5
 };
 
@@ -147,14 +321,28 @@ const DEFAULT_NOTIFICATIONS: SystemNotification[] = [
 
 // Initialize localStorage with dummy data if not present
 function initLocalStorage() {
-  if (!localStorage.getItem("kingatv_channels")) {
+  const localChannelsRaw = localStorage.getItem("kingatv_channels");
+  if (!localChannelsRaw || localChannelsRaw === "[]") {
     localStorage.setItem("kingatv_channels", JSON.stringify(DEFAULT_CHANNELS));
+    try {
+      const deletedTrack = JSON.parse(localStorage.getItem("kingatv_deleted_channels") || "[]");
+      const preloadedIds = ["CH-azam-sport-1", "CH-azam-sport-2", "CH-azam-sport-3", "CH-azam-sport-4", "CH-kix-movies"];
+      const updatedDeleted = deletedTrack.filter((id: string) => !preloadedIds.includes(id));
+      localStorage.setItem("kingatv_deleted_channels", JSON.stringify(updatedDeleted));
+    } catch (_) {}
   }
   if (!localStorage.getItem("kingatv_slideshow")) {
     localStorage.setItem("kingatv_slideshow", JSON.stringify(DEFAULT_SLIDESHOW));
   }
-  if (!localStorage.getItem("kingatv_matches")) {
+  const localMatchesRaw = localStorage.getItem("kingatv_matches");
+  if (!localMatchesRaw || localMatchesRaw === "[]") {
     localStorage.setItem("kingatv_matches", JSON.stringify(DEFAULT_MATCHES));
+    try {
+      const deletedTrack = JSON.parse(localStorage.getItem("kingatv_deleted_matches") || "[]");
+      const preloadedMatchIds = ["match-1", "match-2", "match-3"];
+      const updatedDeleted = deletedTrack.filter((id: string) => !preloadedMatchIds.includes(id));
+      localStorage.setItem("kingatv_deleted_matches", JSON.stringify(updatedDeleted));
+    } catch (_) {}
   }
   if (!localStorage.getItem("kingatv_config")) {
     localStorage.setItem("kingatv_config", JSON.stringify(DEFAULT_GLOBAL_CONFIG));
@@ -295,6 +483,47 @@ function cleanAndClearAllChannelsSlidesAndMatches() {
 initLocalStorage();
 cleanAndClearAllChannelsSlidesAndMatches();
 
+function wipeAllUserCreatedChannelsKeepSlides() {
+  if (!localStorage.getItem("kingatv_v12_wipe_user_channels_done_v2")) {
+    try {
+      const rawChannels = localStorage.getItem("kingatv_channels") || "[]";
+      let channelIds: string[] = [];
+      try {
+        const parsed = JSON.parse(rawChannels);
+        if (Array.isArray(parsed)) {
+          channelIds = parsed.map((c: any) => c.id);
+        }
+      } catch (_) {}
+
+      // Clear the local storage list of channels
+      localStorage.setItem("kingatv_channels", JSON.stringify([]));
+
+      // Append these channel IDs to the deleted tracking list to avoid re-syncing them back from Supabase
+      const deletedTrackChans: string[] = JSON.parse(localStorage.getItem("kingatv_deleted_channels") || "[]");
+      channelIds.forEach(id => {
+        if (!deletedTrackChans.includes(id)) deletedTrackChans.push(id);
+      });
+      localStorage.setItem("kingatv_deleted_channels", JSON.stringify(deletedTrackChans));
+
+      // Mark the execution done
+      localStorage.setItem("kingatv_v12_wipe_user_channels_done_v2", "true");
+
+      // Signal Supabase background cleans immediately
+      import("./supabase").then(m => {
+        channelIds.forEach(id => {
+          m.deleteChannelFromSupabase(id).catch(() => {});
+        });
+        m.syncDatabaseWithSupabase().catch(() => {});
+      }).catch(() => {});
+    } catch (e) {
+      console.warn("Error running local channels wipe:", e);
+    }
+  }
+}
+
+// wipeAllUserCreatedChannelsKeepSlides();
+
+
 /**
  * Helper to ensure channel SVG logos are properly UTF8/Base64 escaped so they dynamically render in standard HTML img tags flawlessly.
  */
@@ -330,22 +559,62 @@ export function getSafeLogoUrl(logo: string | undefined, poster: string = ""): s
 export const localDb = {
   getChannels(): Channel[] {
     const raw: Channel[] = JSON.parse(localStorage.getItem("kingatv_channels") || "[]");
-    return raw.map(c => ({
-      ...c,
-      logo: getSafeLogoUrl(c.logo, c.poster)
-    }));
+    
+    // Parse persistent overrides if any to prevent auto-changing
+    let overrides: Record<string, any> = {};
+    try {
+      const overridesRaw = localStorage.getItem("kingatv_persistent_keys_map");
+      if (overridesRaw) {
+        overrides = JSON.parse(overridesRaw);
+      }
+    } catch (_) {}
+
+    return raw.map(c => {
+      const ov = overrides[c.id];
+      return {
+        ...c,
+        logo: getSafeLogoUrl(c.logo, c.poster),
+        ...(ov || {}) // Apply overrides over base properties
+      };
+    });
   },
   saveChannels(channels: Channel[]) {
     localStorage.setItem("kingatv_channels", JSON.stringify(channels));
+
+    // Also store each channel's keys as persistent overrides
+    try {
+      const overridesRaw = localStorage.getItem("kingatv_persistent_keys_map") || "{}";
+      const overrides = JSON.parse(overridesRaw);
+      channels.forEach(c => {
+        overrides[c.id] = {
+          clearKeyKid: c.clearKeyKid,
+          clearKeyKey: c.clearKeyKey,
+          streamUrl: c.streamUrl,
+          useGlobalToken: c.useGlobalToken
+        };
+      });
+      localStorage.setItem("kingatv_persistent_keys_map", JSON.stringify(overrides));
+    } catch (_) {}
+
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      channels.forEach(c => m.pushChannelUpdateToSupabase(c));
-    }).catch(e => console.warn("Supabase load error:", e));
+
+    // Sync to Firestore
+    channels.forEach(c => {
+      fsSaveChannel(c).catch(e => console.warn("Firestore save channel error:", e));
+    });
   },
   deleteChannel(id: string) {
     const channels = this.getChannels();
     const updated = channels.filter(c => c.id !== id);
     localStorage.setItem("kingatv_channels", JSON.stringify(updated));
+    
+    // Also remove from persistent overrides
+    try {
+      const overridesRaw = localStorage.getItem("kingatv_persistent_keys_map") || "{}";
+      const overrides = JSON.parse(overridesRaw);
+      delete overrides[id];
+      localStorage.setItem("kingatv_persistent_keys_map", JSON.stringify(overrides));
+    } catch (_) {}
     
     // Save locally deleted channel IDs to prevent sync re-syncing them back
     try {
@@ -357,9 +626,9 @@ export const localDb = {
     } catch (_) {}
 
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      m.deleteChannelFromSupabase(id);
-    }).catch(e => console.warn("Supabase delete channel load error:", e));
+
+    // Sync deletion to Firestore
+    fsDeleteChannel(id).catch(e => console.warn("Firestore delete channel error:", e));
   },
   getSlideshow(): SlideshowItem[] {
     return JSON.parse(localStorage.getItem("kingatv_slideshow") || "[]").sort((a: any, b: any) => a.order - b.order);
@@ -367,9 +636,11 @@ export const localDb = {
   saveSlideshow(slides: SlideshowItem[]) {
     localStorage.setItem("kingatv_slideshow", JSON.stringify(slides));
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      slides.forEach(s => m.pushSlideshowUpdateToSupabase(s));
-    }).catch(e => console.warn("Supabase load error:", e));
+
+    // Sync to Firestore
+    slides.forEach(s => {
+      fsSaveSlide(s).catch(e => console.warn("Firestore save slide error:", e));
+    });
   },
   deleteSlideshow(id: string) {
     const slides = this.getSlideshow();
@@ -386,9 +657,9 @@ export const localDb = {
     } catch (_) {}
 
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      m.deleteSlideFromSupabase(id);
-    }).catch(e => console.warn("Supabase delete slide load error:", e));
+
+    // Sync deletion to Firestore
+    fsDeleteSlide(id).catch(e => console.warn("Firestore delete slide error:", e));
   },
   getMatches(): Match[] {
     return JSON.parse(localStorage.getItem("kingatv_matches") || "[]");
@@ -396,9 +667,11 @@ export const localDb = {
   saveMatches(matches: Match[]) {
     localStorage.setItem("kingatv_matches", JSON.stringify(matches));
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      matches.forEach(mat => m.pushMatchUpdateToSupabase(mat));
-    }).catch(e => console.warn("Supabase load error:", e));
+
+    // Sync to Firestore
+    matches.forEach(m => {
+      fsSaveMatch(m).catch(e => console.warn("Firestore save match error:", e));
+    });
   },
   deleteMatch(id: string) {
     const matches = this.getMatches();
@@ -415,31 +688,44 @@ export const localDb = {
     } catch (_) {}
 
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      m.deleteMatchFromSupabase(id);
-    }).catch(e => console.warn("Supabase delete match load error:", e));
+
+    // Sync deletion to Firestore
+    fsDeleteMatch(id).catch(e => console.warn("Firestore delete match error:", e));
   },
   getGlobalConfig(): GlobalConfig {
     const raw = localStorage.getItem("kingatv_config");
-    if (!raw) return DEFAULT_GLOBAL_CONFIG;
-    try {
-      const parsed = JSON.parse(raw);
-      return {
-        ...DEFAULT_GLOBAL_CONFIG,
-        ...parsed,
-        supabaseUrl: parsed.supabaseUrl || DEFAULT_GLOBAL_CONFIG.supabaseUrl,
-        supabaseAnonKey: parsed.supabaseAnonKey || DEFAULT_GLOBAL_CONFIG.supabaseAnonKey
-      };
-    } catch (e) {
-      return DEFAULT_GLOBAL_CONFIG;
+    let baseConfig = DEFAULT_GLOBAL_CONFIG;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        baseConfig = {
+          ...DEFAULT_GLOBAL_CONFIG,
+          ...parsed,
+          supabaseUrl: parsed.supabaseUrl || DEFAULT_GLOBAL_CONFIG.supabaseUrl,
+          supabaseAnonKey: parsed.supabaseAnonKey || DEFAULT_GLOBAL_CONFIG.supabaseAnonKey
+        };
+      } catch (e) {
+        baseConfig = DEFAULT_GLOBAL_CONFIG;
+      }
     }
+    
+    // Always preserve specifically saved custom user token if available
+    const savedToken = localStorage.getItem("kingatv_user_saved_token");
+    if (savedToken !== null) {
+      baseConfig.globalToken = savedToken;
+    }
+    return baseConfig;
   },
   saveGlobalConfig(config: GlobalConfig) {
+    if (config.globalToken !== undefined) {
+      localStorage.setItem("kingatv_user_saved_token", config.globalToken);
+      localStorage.setItem("kingatv_token_is_custom", "true");
+    }
     localStorage.setItem("kingatv_config", JSON.stringify(config));
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      m.pushConfigUpdateToSupabase(config);
-    }).catch(e => console.warn("Supabase load error:", e));
+
+    // Sync to Firestore
+    fsSaveConfig(config).catch(e => console.warn("Firestore save config error:", e));
   },
   getNotifications(): SystemNotification[] {
     return JSON.parse(localStorage.getItem("kingatv_notifications") || "[]");
@@ -447,6 +733,11 @@ export const localDb = {
   saveNotifications(notifs: SystemNotification[]) {
     localStorage.setItem("kingatv_notifications", JSON.stringify(notifs));
     this.triggerUpdate();
+
+    // Sync notifications to Firestore
+    notifs.forEach(n => {
+      fsSaveNotification(n).catch(e => console.warn("Firestore save notification error:", e));
+    });
   },
   getUsers(): UserProfile[] {
     return JSON.parse(localStorage.getItem("kingatv_users") || "[]");
@@ -454,9 +745,11 @@ export const localDb = {
   saveUsers(users: UserProfile[]) {
     localStorage.setItem("kingatv_users", JSON.stringify(users));
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      users.forEach(u => m.pushUserUpdateToSupabase(u));
-    }).catch(e => console.warn("Supabase load error:", e));
+
+    // Sync users to Firestore
+    users.forEach(u => {
+      fsSaveUser(u).catch(e => console.warn("Firestore save user error:", e));
+    });
   },
   getUser(uid: string): UserProfile | null {
     const users = this.getUsers();
@@ -464,13 +757,22 @@ export const localDb = {
   },
   updateUserProfile(uid: string, updates: Partial<UserProfile>) {
     const users = this.getUsers();
+    let updatedUser: UserProfile | null = null;
     const updated = users.map(u => {
       if (u.uid === uid) {
-        return { ...u, ...updates };
+        const copy = { ...u, ...updates };
+        updatedUser = copy;
+        return copy;
       }
       return u;
     });
-    this.saveUsers(updated);
+    localStorage.setItem("kingatv_users", JSON.stringify(updated));
+    this.triggerUpdate();
+
+    // Sync single updated user to Firestore
+    if (updatedUser) {
+      fsSaveUser(updatedUser).catch(e => console.warn("Firestore update user error:", e));
+    }
     
     // Also update current active user session if applicable
     const active = localStorage.getItem("kingatv_active_user");
@@ -496,9 +798,9 @@ export const localDb = {
     } catch (_) {}
 
     this.triggerUpdate();
-    import("./supabase").then(m => {
-      m.deleteUserFromSupabase(uid);
-    }).catch(e => console.warn("Supabase delete sync in localDb error:", e));
+
+    // Sync deletion to Firestore
+    fsDeleteUser(uid).catch(e => console.warn("Firestore delete user error:", e));
   },
 
 
@@ -516,16 +818,164 @@ export const localDb = {
 };
 
 /**
- * Fallback auth controller
+ * Real-time background sync function for Firestore
+ */
+export function startFirestoreSync() {
+  try {
+    // 1. Sync channels - if empty, pre-populate default channels
+    onSnapshot(collection(firestoreDb, "channels"), (snapshot) => {
+      if (snapshot.empty) {
+        console.log("Firestore empty! Initializing standard preloaded channels...");
+        DEFAULT_CHANNELS.forEach(c => {
+          fsSaveChannel(c).catch(e => console.warn(e));
+        });
+        return;
+      }
+      const dbChannels: Channel[] = [];
+      snapshot.forEach((doc) => {
+        dbChannels.push({ id: doc.id, ...doc.data() } as Channel);
+      });
+      dbChannels.sort((a, b) => (a.order || 0) - (b.order || 0));
+      localStorage.setItem("kingatv_channels", JSON.stringify(dbChannels));
+      localDb.triggerUpdate();
+    }, (error) => {
+      console.warn("Firestore error syncing channels:", error);
+    });
+
+    // 2. Sync slideshow
+    onSnapshot(collection(firestoreDb, "slideshow"), (snapshot) => {
+      const dbSlides: SlideshowItem[] = [];
+      snapshot.forEach((doc) => {
+        dbSlides.push({ id: doc.id, ...doc.data() } as SlideshowItem);
+      });
+      dbSlides.sort((a, b) => (a.order || 0) - (b.order || 0));
+      localStorage.setItem("kingatv_slideshow", JSON.stringify(dbSlides));
+      localDb.triggerUpdate();
+    }, (error) => {
+      console.warn("Firestore error syncing slideshow:", error);
+    });
+
+    // 3. Sync matches
+    onSnapshot(collection(firestoreDb, "matches"), (snapshot) => {
+      const dbMatches: Match[] = [];
+      snapshot.forEach((doc) => {
+        dbMatches.push({ id: doc.id, ...doc.data() } as Match);
+      });
+      localStorage.setItem("kingatv_matches", JSON.stringify(dbMatches));
+      localDb.triggerUpdate();
+    }, (error) => {
+      console.warn("Firestore error syncing matches:", error);
+    });
+
+    // 4. Sync notifications
+    onSnapshot(collection(firestoreDb, "notifications"), (snapshot) => {
+      const dbNotifs: SystemNotification[] = [];
+      snapshot.forEach((doc) => {
+        dbNotifs.push({ id: doc.id, ...doc.data() } as SystemNotification);
+      });
+      dbNotifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      localStorage.setItem("kingatv_notifications", JSON.stringify(dbNotifs));
+      localDb.triggerUpdate();
+    }, (error) => {
+      console.warn("Firestore error syncing notifications:", error);
+    });
+
+    // 5. Sync global settings
+    onSnapshot(doc(firestoreDb, "settings", "global"), (snapshot) => {
+      if (snapshot.exists()) {
+        const config = { ...DEFAULT_GLOBAL_CONFIG, ...snapshot.data() } as GlobalConfig;
+        localStorage.setItem("kingatv_config", JSON.stringify(config));
+        localDb.triggerUpdate();
+      } else {
+        console.log("settings/global does not exist in Firestore. Initializing with defaults...");
+        fsSaveConfig(DEFAULT_GLOBAL_CONFIG).catch(e => console.warn(e));
+      }
+    }, (error) => {
+      console.warn("Firestore error syncing settings:", error);
+    });
+
+    // 6. Sync users
+    onSnapshot(collection(firestoreDb, "users"), (snapshot) => {
+      const dbUsers: UserProfile[] = [];
+      snapshot.forEach((doc) => {
+        dbUsers.push({ uid: doc.id, ...doc.data() } as UserProfile);
+      });
+      if (dbUsers.length > 0) {
+        localStorage.setItem("kingatv_users", JSON.stringify(dbUsers));
+        
+        // Update current user cache if changed
+        const activeItem = localStorage.getItem("kingatv_active_user");
+        if (activeItem) {
+          const activeObj = JSON.parse(activeItem) as UserProfile;
+          const matched = dbUsers.find(u => u.uid === activeObj.uid);
+          if (matched) {
+            localStorage.setItem("kingatv_active_user", JSON.stringify(matched));
+          }
+        }
+        localDb.triggerUpdate();
+      } else {
+        // Pre-populate if empty
+        const initialUsers: UserProfile[] = [
+          {
+            uid: "user-admin-said",
+            email: "saidsalum076660@gmail.com",
+            name: "Said Salum (Admin)",
+            phone: "076660",
+            status: UserStatus.ACTIVE,
+            createdAt: new Date().toISOString(),
+            freeSecondsRemaining: 120,
+            subscriptionExpiresAt: "2030-12-31T23:59:59Z",
+            approvedByAdmin: true,
+            password: "tanganyika"
+          }
+        ];
+        initialUsers.forEach(u => {
+          fsSaveUser(u).catch(e => console.warn(e));
+        });
+      }
+    }, (error) => {
+      console.warn("Firestore error syncing users:", error);
+    });
+
+  } catch (err) {
+    console.error("Failed to start Firestore synchronization:", err);
+  }
+}
+
+// Start realtime sync immediately on load
+startFirestoreSync();
+
+/**
+ * Fallback auth controller, now backed by Firebase Authentication
  */
 export const localAuth = {
   getCurrentUser(): UserProfile | null {
     const u = localStorage.getItem("kingatv_active_user");
     return u ? JSON.parse(u) : null;
   },
-  register(name: string, email: string, phone: string, status: UserStatus = UserStatus.PENDING, password?: string, autoLogin: boolean = true): UserProfile {
+  async register(name: string, email: string, phone: string, status: UserStatus = UserStatus.PENDING, password?: string, autoLogin: boolean = true): Promise<UserProfile> {
+    const pwd = password || "12345";
+    
+    // Create Firebase Auth user first
+    let firebaseUser;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(firebaseAuthInstance, email, pwd);
+      firebaseUser = userCredential.user;
+    } catch (err: any) {
+      console.error("Firebase auth registration error:", err);
+      if (err.code === "auth/email-already-in-use") {
+        throw new Error("Email tayari imesajiliwa kwenye mfumo (Email already in use).");
+      } else if (err.code === "auth/weak-password") {
+        throw new Error("Nenosiri lako ni dhaifu mno, weka herufi zisizopungua 6.");
+      } else if (err.code === "auth/invalid-email") {
+        throw new Error("Barua pepe (Email) sio sahihi.");
+      } else {
+        throw new Error(err.message || "Failed to register in Firebase Auth.");
+      }
+    }
+
     const newUser: UserProfile = {
-      uid: "user_" + Math.random().toString(36).substring(2, 10),
+      uid: firebaseUser.uid, // Use Firebase Generated UID!
       email,
       name,
       phone,
@@ -534,15 +984,17 @@ export const localAuth = {
       freeSecondsRemaining: 120,
       subscriptionExpiresAt: null,
       approvedByAdmin: false,
-      password: password || "12345"
+      password: pwd
     };
 
     // Store in all users list
     const users = localDb.getUsers();
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      throw new Error("Email tayari imesajiliwa. Tafadhali ingia.");
+    const existingIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+    if (existingIndex > -1) {
+      users[existingIndex] = { ...users[existingIndex], uid: firebaseUser.uid, name, phone, password: pwd };
+    } else {
+      users.push(newUser);
     }
-    users.push(newUser);
     localDb.saveUsers(users);
 
     // Save as active session only if autoLogin is true
@@ -552,72 +1004,105 @@ export const localAuth = {
     localDb.triggerUpdate();
     return newUser;
   },
-  login(email: string, password?: string): UserProfile {
+  async login(email: string, password?: string): Promise<UserProfile> {
     const normalizedEmail = email.trim().toLowerCase();
+    const pwd = password || "";
 
-    // Admin override check
-    if (normalizedEmail === "saidsalum076660@gmail.com" || normalizedEmail === "saidsalum076660@gmailo.com") {
-      if (password !== "tanganyika") {
-        throw new Error("Nenosiri si sahihi (Incorrect password).");
+    // 1. Admin local override bypass checks in case they aren't registered yet in Firebase Auth
+    if (normalizedEmail === "saidsalum076660@gmail.com" || normalizedEmail === "saidsalum076660@gmailo.com" || normalizedEmail === "admin@kingatv.com") {
+      if (pwd === "tanganyika") {
+        const users = localDb.getUsers();
+        let adminUser = users.find(u => u.email.toLowerCase() === normalizedEmail);
+        if (!adminUser) {
+          adminUser = {
+            uid: normalizedEmail === "saidsalum076660@gmail.com" ? "user-admin-said" : (normalizedEmail === "admin@kingatv.com" ? "user-admin-gen" : "user-admin-typo"),
+            email: normalizedEmail,
+            name: normalizedEmail === "saidsalum076660@gmail.com" ? "Said Salum" : "Kinga Admin",
+            phone: "076660",
+            status: UserStatus.ACTIVE,
+            createdAt: new Date().toISOString(),
+            freeSecondsRemaining: 120,
+            subscriptionExpiresAt: "2030-12-31T23:59:59Z",
+            approvedByAdmin: true,
+            password: "tanganyika"
+          };
+          users.push(adminUser);
+          localDb.saveUsers(users);
+        }
+        
+        // Quietly create or login on Firebase Auth so that Firebase stays in sync
+        try {
+          await signInWithEmailAndPassword(firebaseAuthInstance, normalizedEmail, pwd);
+        } catch (fbErr: any) {
+          if (fbErr.code === "auth/user-not-found" || fbErr.code === "auth/invalid-credential") {
+            try {
+              await createUserWithEmailAndPassword(firebaseAuthInstance, normalizedEmail, pwd);
+            } catch (_) {}
+          }
+        }
+
+        localStorage.setItem("kingatv_active_user", JSON.stringify(adminUser));
+        localDb.triggerUpdate();
+        return adminUser;
       }
-      const users = localDb.getUsers();
-      let adminUser = users.find(u => u.email.toLowerCase() === normalizedEmail);
-      if (!adminUser) {
-        adminUser = {
-          uid: normalizedEmail === "saidsalum076660@gmail.com" ? "user-admin-said" : "user-admin-typo",
-          email: normalizedEmail,
-          name: normalizedEmail === "saidsalum076660@gmail.com" ? "Said Salum" : "Said Salum (Typo Admin)",
-          phone: "076660",
-          status: UserStatus.ACTIVE,
-          createdAt: new Date().toISOString(),
-          freeSecondsRemaining: 120,
-          subscriptionExpiresAt: "2030-12-31T23:59:59Z",
-          approvedByAdmin: true,
-          password: "tanganyika"
-        };
-        users.push(adminUser);
-        localDb.saveUsers(users);
-      }
-      localStorage.setItem("kingatv_active_user", JSON.stringify(adminUser));
-      localDb.triggerUpdate();
-      return adminUser;
     }
 
-    if (normalizedEmail === "admin@kingatv.com") {
-      if (password !== "tanganyika") {
-        throw new Error("Nenosiri si sahihi (Incorrect password).");
-      }
+    // 2. Perform Firebase Login for standard users
+    let firebaseUser;
+    try {
+      const userCredential = await signInWithEmailAndPassword(firebaseAuthInstance, normalizedEmail, pwd);
+      firebaseUser = userCredential.user;
+    } catch (err: any) {
+      console.warn("Firebase signin failed, searching for local fallback...", err);
+      
       const users = localDb.getUsers();
-      let generalAdmin = users.find(u => u.email.toLowerCase() === "admin@kingatv.com");
-      if (!generalAdmin) {
-        generalAdmin = {
-          uid: "user-admin-gen",
-          email: "admin@kingatv.com",
-          name: "Kinga Admin",
-          status: UserStatus.ACTIVE,
-          createdAt: new Date().toISOString(),
-          freeSecondsRemaining: 120,
-          subscriptionExpiresAt: "2030-12-31T23:59:59Z",
-          approvedByAdmin: true,
-          password: "tanganyika"
-        };
-        users.push(generalAdmin);
-        localDb.saveUsers(users);
+      const localMatches = users.find(u => u.email.toLowerCase() === normalizedEmail);
+      if (localMatches && localMatches.password === pwd) {
+        try {
+          console.log("Dynamically registering local user on Firebase...");
+          const userCredential = await createUserWithEmailAndPassword(firebaseAuthInstance, normalizedEmail, pwd);
+          firebaseUser = userCredential.user;
+          
+          localMatches.uid = firebaseUser.uid;
+          localDb.saveUsers(users);
+        } catch (regErr) {
+          console.error("Failed to dynamically register existing user in Firebase Auth:", regErr);
+          throw new Error("Imeshindwa kuingia na akaunti yako. " + (err.message || ""));
+        }
+      } else {
+        if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found") {
+          throw new Error("Barua pepe (Email) au nenosiri sio sahihi. Tafadhali jaribu tena.");
+        } else if (err.code === "auth/user-disabled") {
+          throw new Error("Akaunti yako imezimwa na msimamizi wetu.");
+        } else {
+          throw new Error(err.message || "Imeshindwa kuingia kwenye akaunti.");
+        }
       }
-      localStorage.setItem("kingatv_active_user", JSON.stringify(generalAdmin));
-      localDb.triggerUpdate();
-      return generalAdmin;
     }
 
+    // Retrieve full profile from local database
     const users = localDb.getUsers();
-    const existingUser = users.find(u => u.email.toLowerCase() === normalizedEmail);
-    if (!existingUser) {
-      throw new Error("Mtumiaji hajapatikana. Tafadhali jisajili kwanza.");
-    }
+    let existingUser = users.find(u => u.uid === firebaseUser.uid || u.email.toLowerCase() === normalizedEmail);
 
-    // Verify password if user has password set
-    if (existingUser.password && existingUser.password !== password) {
-      throw new Error("Nenosiri si sahihi (Incorrect password).");
+    if (!existingUser) {
+      existingUser = {
+        uid: firebaseUser.uid,
+        email: normalizedEmail,
+        name: normalizedEmail.split("@")[0],
+        status: UserStatus.PENDING,
+        createdAt: new Date().toISOString(),
+        freeSecondsRemaining: 120,
+        subscriptionExpiresAt: null,
+        approvedByAdmin: false,
+        password: pwd
+      };
+      users.push(existingUser);
+      localDb.saveUsers(users);
+    } else {
+      if (existingUser.uid !== firebaseUser.uid) {
+        existingUser.uid = firebaseUser.uid;
+        localDb.saveUsers(users);
+      }
     }
 
     if (existingUser.status === UserStatus.BLOCKED) {
@@ -628,7 +1113,12 @@ export const localAuth = {
     localDb.triggerUpdate();
     return existingUser;
   },
-  logout() {
+  async logout() {
+    try {
+      await signOut(firebaseAuthInstance);
+    } catch (e) {
+      console.warn("SignOut Firebase error:", e);
+    }
     localStorage.removeItem("kingatv_active_user");
     localDb.triggerUpdate();
   }

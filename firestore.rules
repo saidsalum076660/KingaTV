@@ -7,13 +7,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Checking if user is verified admin
+    // Checking if user is verified
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isVerifiedUser() {
-      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == "phone" || request.auth.token.firebase.sign_in_provider == "anonymous");
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
     function isAdmin() {
@@ -41,22 +41,24 @@ service cloud.firestore {
 
     // User collection rules
     match /users/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // Each user can ONLY read their own user data. They cannot read other users' data.
+      allow get: if isOwner(userId) || isAdmin();
+      
+      // Listing all users is restricted to Admin only. Simple users have no access to listing.
       allow list: if isAdmin();
       
-      // Creating an account forces PENDING status and 120 seconds free trial
-      allow create: if isSignedIn() 
-        && request.auth.uid == userId
+      // Each user can only write/create their own registered user document.
+      allow create: if isOwner(userId) 
         && request.resource.data.uid == userId
         && request.resource.data.status == "PENDING"
         && request.resource.data.freeSecondsRemaining == 120
         && request.resource.data.createdAt != null;
         
-      // Users can only update their freeSecondsRemaining (trials)
-      // Admins can update all fields including status
+      // Each user can only update their own user document. No other user can access or write to it.
+      // Admins are permitted to perform administrative updates.
       allow update: if isSignedIn() && (
         isAdmin() || (
-          request.auth.uid == userId 
+          isOwner(userId) 
           && request.resource.data.status == resource.data.status // cannot self-approve
           && request.resource.data.uid == resource.data.uid
           && request.resource.data.email == resource.data.email
@@ -65,34 +67,35 @@ service cloud.firestore {
         )
       );
       
+      // Standard users are completely blocked from deleting user records.
       allow delete: if isAdmin();
     }
 
-    // Channels Collection
+    // Channels Collection - public read-only for authenticated system users, managed by admin
     match /channels/{channelId} {
       allow read: if isSignedIn();
       allow write, create, update, delete: if isAdmin();
     }
 
-    // Slideshow Collection
+    // Slideshow Collection - public read-only for authenticated system users, managed by admin
     match /slideshow/{slideId} {
       allow read: if isSignedIn();
       allow write, create, update, delete: if isAdmin();
     }
 
-    // Matches Collection
+    // Matches Collection - public read-only for authenticated system users, managed by admin
     match /matches/{matchId} {
       allow read: if isSignedIn();
       allow write, create, update, delete: if isAdmin();
     }
 
-    // Settings Collection (Global settings)
-    match /settings/global {
+    // Settings Collection (Global settings) - read-only for authenticated system users, managed by admin
+    match /settings/{settingId} {
       allow read: if isSignedIn();
       allow write, create, update: if isAdmin();
     }
 
-    // Notifications Collection
+    // Notifications Collection - read-only for authenticated system users, managed by admin
     match /notifications/{notificationId} {
       allow read: if isSignedIn();
       allow write, create, update, delete: if isAdmin();

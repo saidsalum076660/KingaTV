@@ -52,19 +52,20 @@ export default function Slideshow({ slides, onSelectChannel }: SlideshowProps) {
           onSelectChannel(activeSlide.channelId);
         }
       }}
-      className={`relative w-full h-[220px] md:h-[320px] lg:h-[380px] rounded-2xl overflow-hidden group shadow-2xl border border-blue-900/40 ${activeSlide.channelId ? "cursor-pointer" : "cursor-default"}`}
+      className={`relative w-full aspect-[16/9] rounded-2xl overflow-hidden group shadow-2xl border border-slate-900/40 ${activeSlide.channelId ? "cursor-pointer" : "cursor-default"}`}
     >
       
       {/* Slide Image Background */}
-      <div className="absolute inset-0 transition-all duration-700 ease-out transform">
+      <div className="absolute inset-0 transition-all duration-700 ease-out transform bg-slate-950 flex items-center justify-center overflow-hidden">
+        {/* Crisp, intact main image where text is NEVER cut off */}
         <img
           id={`slideshow_img_${activeSlide.id}`}
           src={activeSlide.image}
           alt={activeSlide.title}
-          className="w-full h-full object-cover select-none object-center group-hover:scale-102 transition-all duration-750"
+          className="w-full h-full object-cover select-none z-10 group-hover:scale-[1.01] transition-all duration-750"
         />
         {/* Subtle dark gradient vignette for elegant depth */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-transparent to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-transparent to-transparent pointer-events-none z-20" />
       </div>
 
       {/* Slide Navigation and Indicators overlay (No Text/Words as requested!) */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Tv, Play, Calendar, User, Search, PlayCircle, Clock, AlertCircle, 
   ChevronRight, LogOut, CheckCircle2, ShieldAlert, Award, DollarSign, Bell,
@@ -29,7 +29,32 @@ export default function UserApp({ user, onLogout, onOpenAdmin, isAdmin }: UserAp
   // Stream Playback States
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [selectedCategory, setSelectedCategory] = useState<string>("Zote");
+  const [showSearchInput, setShowSearchInput] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Categories Scrollbar & Indicators ref and states
+  const categoryScrollRef = useRef<HTMLDivElement>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
+
+  const scrollCategories = (direction: "left" | "right") => {
+    if (categoryScrollRef.current) {
+      const scrollAmount = 150;
+      categoryScrollRef.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth"
+      });
+    }
+  };
+
+  const handleCategoriesScroll = () => {
+    if (categoryScrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = categoryScrollRef.current;
+      const maxScroll = scrollWidth - clientWidth;
+      const pct = maxScroll > 0 ? (scrollLeft / maxScroll) * 100 : 0;
+      setScrollProgress(pct);
+    }
+  };
 
   // Payment Confirmation Simulated Form Form States
   const [payPhoneNumber, setPayPhoneNumber] = useState("");
@@ -111,13 +136,47 @@ export default function UserApp({ user, onLogout, onOpenAdmin, isAdmin }: UserAp
     alert("Ombi lako la malipo limeshawasilishwa! Msimamizi atapitia na kukuwekea ACTIVE ndani ya masaa 2.");
   };
 
-  // Group channels by categories
-  const categories = ["All", ...Array.from(new Set(channels.map((c) => c.category)))];
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      // Import and trigger a live sync with Supabase in the background
+      const m = await import("../supabase");
+      if (m.isSupabaseConnected()) {
+        const success = await m.syncDatabaseWithSupabase();
+        if (success) {
+          console.log("Supabase sync successful on manual refresh.");
+        }
+      }
+    } catch (e) {
+      console.warn("Supabase sync error on refresh:", e);
+    } finally {
+      // Reload local values as well
+      const loadedChannels = localDb.getChannels().sort((a, b) => a.order - b.order);
+      setChannels(loadedChannels);
+      setSlides(localDb.getSlideshow());
+      setMatches(localDb.getMatches());
+      setNotifications(localDb.getNotifications());
+      
+      const freshUser = localDb.getUser(currentUser.uid);
+      if (freshUser) {
+        setCurrentUser(freshUser);
+      }
+      setIsRefreshing(false);
+      alert("Mifumo na Vituo vya KINGA TV vimesasishwa kikamilifu! (Data Refreshed Successfully)");
+    }
+  };
+
+  // Direct list of categories requested by user
+  const categories = ["Zote", "Sports", "Movies", "News", "Documentary", "Music", "Religious", "Kids"];
 
   const filteredChannels = channels.filter((c) => {
     const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           c.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "All" || c.category === selectedCategory;
+    
+    const targetCategory = selectedChannel ? selectedChannel.category : selectedCategory;
+    const matchesCategory = targetCategory === "Zote" || 
+                            c.category.toLowerCase() === targetCategory.toLowerCase();
     return matchesSearch && matchesCategory;
   });
 
@@ -128,61 +187,61 @@ export default function UserApp({ user, onLogout, onOpenAdmin, isAdmin }: UserAp
     <div id="user_app_root" className="min-h-screen bg-slate-950 text-slate-100 flex flex-col max-w-lg mx-auto shadow-2xl relative border-x border-slate-900 pb-20">
       
       {/* Top Header Section */}
-      {activeTab === "home" && selectedCategory !== "All" ? (
-        <header className="p-4 bg-slate-950 border-b border-slate-900 sticky top-0 z-30 backdrop-blur-md flex items-center gap-4 select-none">
-          <button 
-            onClick={() => {
-              setSelectedCategory("All");
-              setSearchQuery("");
-            }}
-            className="p-1 hover:bg-slate-900 rounded-xl transition-all cursor-pointer active:scale-95 flex items-center justify-center text-white"
-            title="Slaidi Nyuma"
-          >
-            <ArrowLeft className="w-6 h-6 text-white" />
-          </button>
-          <h1 className="font-extrabold text-sm text-white uppercase tracking-wider">
-            {selectedCategory.toUpperCase().endsWith("CHANNEL") || selectedCategory.toUpperCase().endsWith("CHANNELS")
-              ? selectedCategory.toUpperCase()
-              : `${selectedCategory.toUpperCase()} CHANNEL`
-            }
-          </h1>
-        </header>
-      ) : (
-        /* Top KINGA TV Premium App Header Banner - Replicated beautifully from the User's Screenshot */
-        <header className="p-4 bg-slate-950 border-b border-slate-900 sticky top-0 z-30 backdrop-blur-md flex items-center justify-between select-none">
-          
-          {/* Left Side: Photo-accurate Emerald Green KINGA TV Pill Badge with Layers/Stack Icon */}
-          <div className="flex items-center gap-2 bg-[#0d8258] text-white px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-wider select-none shadow-md shadow-emerald-950/20">
-            <Layers className="w-4 h-4 text-white" />
-            <span>KINGA TV</span>
-          </div>
-
-          {/* Right Side: Blue Circular Refresh and Search Buttons */}
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => window.location.reload()}
-              className="w-[42px] h-[42px] bg-[#2563eb] hover:bg-blue-600 active:scale-95 text-white rounded-2xl flex items-center justify-center transition-all cursor-pointer shadow-lg shadow-blue-500/15 border border-blue-400/20"
-              title="Reload App"
-            >
-              <RotateCw className="w-5 h-5 text-white" />
-            </button>
-            
+      <header className="p-4 bg-slate-950 border-b border-slate-900 sticky top-0 z-30 backdrop-blur-md flex items-center justify-between select-none">
+        {showSearchInput ? (
+          <div className="flex items-center gap-2 w-full animate-fade-in">
+            <span className="text-slate-400">
+              <Search className="w-5 h-5 text-slate-500" />
+            </span>
+            <input
+              id="header_channel_search"
+              type="text"
+              autoFocus
+              placeholder="Tafuta channels au sinema..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-[#1e293b]/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-bold"
+            />
             <button
               onClick={() => {
-                const searchElem = document.getElementById("channel_search_detail") || document.getElementById("channel_search");
-                if (searchElem) {
-                  searchElem.scrollIntoView({ behavior: "smooth", block: "center" });
-                  searchElem.focus();
-                }
+                setSearchQuery("");
+                setShowSearchInput(false);
               }}
-              className="w-[42px] h-[42px] bg-[#2563eb] hover:bg-blue-600 active:scale-95 text-white rounded-2xl flex items-center justify-center transition-all cursor-pointer shadow-lg shadow-blue-500/15 border border-blue-400/20"
-              title="Tafuta Vituo"
+              className="text-slate-400 hover:text-white bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl text-xs font-bold"
             >
-              <Search className="w-5 h-5 text-white" />
+              Futa
             </button>
           </div>
-        </header>
-      )}
+        ) : (
+          <>
+            {/* Left Side: Photo-accurate Emerald Green KINGA TV Pill Badge with Layers/Stack Icon */}
+            <div className="flex items-center gap-2 bg-[#0d8258] text-white px-4 py-2 rounded-2xl text-xs font-black uppercase tracking-wider select-none shadow-md shadow-emerald-950/20">
+              <Layers className="w-4 h-4 text-white" />
+              <span>KINGA TV</span>
+            </div>
+
+            {/* Right Side: Blue Circular Refresh and Search Buttons */}
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className={`w-[42px] h-[42px] bg-[#2563eb] hover:bg-blue-600 active:scale-95 text-white rounded-2xl flex items-center justify-center transition-all cursor-pointer shadow-lg shadow-blue-500/15 border border-blue-400/20`}
+                title="Reload App"
+              >
+                <RotateCw className={`w-5 h-5 text-white ${isRefreshing ? "animate-spin" : ""}`} />
+              </button>
+              
+              <button
+                onClick={() => setShowSearchInput(true)}
+                className="w-[42px] h-[42px] bg-[#2563eb] hover:bg-blue-600 active:scale-95 text-white rounded-2xl flex items-center justify-center transition-all cursor-pointer shadow-lg shadow-blue-500/15 border border-blue-400/20"
+                title="Tafuta Vituo"
+              >
+                <Search className="w-5 h-5 text-white" />
+              </button>
+            </div>
+          </>
+        )}
+      </header>
 
       {/* Main tab viewports */}
       <main className="p-4 space-y-5 flex-1">
@@ -245,131 +304,142 @@ export default function UserApp({ user, onLogout, onOpenAdmin, isAdmin }: UserAp
 
         {/* TAB A: HOME SCREEN */}
         {activeTab === "home" && (
-          <div id="tab_home_view" className="space-y-5">
-            {selectedCategory === "All" ? (
-              <>
-                {/* Automatic Featured Slideshow Banner (Only on HOME tab) */}
-                <Slideshow slides={slides} onSelectChannel={handleSelectChannelById} />
-
-                {/* Channels listed as horizontal category lanes directly - matching layout in user's image */}
-                <div id="channels_browser_section" className="space-y-6 pt-1">
-                  {(() => {
-                    const activeCategories = Array.from(new Set(filteredChannels.map(c => c.category))) as string[];
-
-                    if (filteredChannels.length === 0) {
-                      return (
-                        <div className="text-center p-8 border border-slate-800 border-dashed rounded-xl text-slate-500 text-xs">
-                          Hakuna channel iliyopatikana kwa sasa.
-                        </div>
-                      );
-                    }
-
-                    return activeCategories.map((cat) => {
-                      const catChannels = filteredChannels.filter(c => c.category === cat);
-                      if (catChannels.length === 0) return null;
-
-                      return (
-                        <div key={cat} className="space-y-3">
-                          {/* Lane Header */}
-                          <div className="flex justify-between items-center select-none">
-                            <h4 className="text-xs sm:text-xs font-black uppercase text-slate-100 tracking-wider">
-                              {cat.toUpperCase().endsWith("CHANNEL") || cat.toUpperCase().endsWith("CHANNELS")
-                                ? cat.toUpperCase()
-                                : `${cat.toUpperCase()} CHANNEL`
-                              }
-                            </h4>
-                            <button
-                              onClick={() => setSelectedCategory(cat)}
-                              className="px-3 py-1 bg-[#1e293b]/30 border border-slate-800/80 rounded-lg text-[9px] font-bold text-slate-400 hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
-                            >
-                              <span>Show More</span>
-                              <ChevronRight className="w-3 h-3 text-slate-500" />
-                            </button>
-                          </div>
-
-                          {/* Flat horizontal list */}
-                          <div className="flex gap-3.5 overflow-x-auto pb-3.5 scrollbar-none -mx-4 px-4">
-                            {catChannels.map((c) => (
-                              <div
-                                key={c.id}
-                                onClick={() => handlePlayChannel(c)}
-                                className="w-[114px] sm:w-[124px] shrink-0 cursor-pointer group flex flex-col"
-                              >
-                                {/* Poster Core Area without PRO badge */}
-                                <div className="w-full aspect-[3/4] rounded-2xl overflow-hidden border border-slate-800/80 bg-slate-950 group-hover:border-cyan-500/40 transition-all relative shadow-lg">
-                                  <img
-                                    src={c.poster}
-                                    alt={c.name}
-                                    className="w-full h-full object-cover select-none"
-                                  />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/35 via-transparent to-transparent" />
-                                </div>
-
-                                {/* Centered title below the poster */}
-                                <p className="w-full text-[11px] font-extrabold text-slate-300 text-center mt-2 group-hover:text-cyan-400 transition-all truncate leading-tight">
-                                  {c.name}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </>
-            ) : (
-              /* CATEGORY DETAIL VIEW: Exactly matching the uploaded screenshot layout */
-              <div id="category_detail_view" className="space-y-6 pt-1">
-                {/* Search Bar - styled with placeholder "Tafuta channels..." inside a dark pill background */}
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">
-                    <Search className="w-5 h-5 text-slate-500" />
-                  </span>
-                  <input
-                    id="channel_search_detail"
-                    type="text"
-                    placeholder="Tafuta channels..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-[#1e293b]/80 border border-slate-800 rounded-2xl py-3.5 pl-12 pr-4 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 font-bold"
-                  />
-                </div>
-
-                {/* 2-column Grid of Channel Cards */}
-                <div className="grid grid-cols-2 gap-4">
-                  {filteredChannels.map((c) => (
-                    <div
-                      key={c.id}
-                      onClick={() => handlePlayChannel(c)}
-                      className="cursor-pointer group flex flex-col"
-                    >
-                      {/* The Slate Card with rounded-3xl/2xl, containing centered circular logo inside */}
-                      <div className="w-full aspect-square rounded-[36px] bg-[#0c1322] border border-slate-900/40 hover:border-blue-500/30 flex items-center justify-center p-6 transition-all shadow-xl relative">
-                        <div className="w-24 h-24 sm:w-26 sm:h-26 rounded-full overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center shadow-md">
-                          <img
-                            src={c.logo || c.poster}
-                            alt={c.name}
-                            className="w-full h-full object-cover select-none"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Title formatted cleanly exactly below the card (no PRO word!) */}
-                      <p className="w-full text-[11px] font-extrabold text-slate-300 text-center mt-2.5 truncate leading-tight group-hover:text-cyan-400 transition-all">
-                        {c.name}
-                      </p>
-                    </div>
-                  ))}
-
-                  {filteredChannels.length === 0 && (
-                    <div className="col-span-2 text-center p-8 border border-slate-800 border-dashed rounded-xl text-slate-500 text-xs">
-                      Hakuna channel iliyopatikana kwenye kundi hili.
-                    </div>
-                  )}
-                </div>
-              </div>
+          <div id="tab_home_view" className="space-y-5 animate-fade-in">
+            {/* Automatic Featured Slideshow Banner (Hidden when actively streaming/playing a specific channel) */}
+            {!selectedChannel && (
+              <Slideshow slides={slides} onSelectChannel={handleSelectChannelById} />
             )}
+
+            {/* Scrolling list container (Category buttons) */}
+            <div className="relative w-full">
+              <div 
+                id="categories_tabs_slider" 
+                ref={categoryScrollRef}
+                onScroll={handleCategoriesScroll}
+                className="w-full flex gap-2 overflow-x-auto pb-2 scrollbar-none select-none"
+              >
+                {categories.map((cat) => {
+                  const isActive = selectedCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      id={`category_btn_${cat}`}
+                      onClick={() => {
+                        setSelectedCategory(cat);
+                      }}
+                      className={`px-5 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-200 active:scale-95 cursor-pointer select-none ${
+                        isActive
+                          ? "bg-[#2563eb] text-white font-black shadow-lg shadow-blue-500/10"
+                          : "bg-slate-900/60 border border-slate-800 text-slate-400 font-medium hover:text-white hover:border-slate-750"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Photo-accurate custom Scroll Progress Indicator Bar with Arrow Anchors below categories */}
+            <div className="flex items-center gap-2 justify-center w-full px-1 max-w-[280px] mx-auto select-none pt-0.5 pb-2">
+              {/* Left Arrow Icon Indicator */}
+              <button
+                onClick={() => scrollCategories("left")}
+                className="text-slate-500 hover:text-white pb-0.5 text-base font-bold select-none shrink-0 cursor-pointer active:scale-75 transition-all outline-none"
+                title="Slaidi Nyuma"
+              >
+                &lsaquo;
+              </button>
+              
+              {/* Sliding Track Line */}
+              <div className="flex-1 h-3 bg-slate-800 border border-slate-750 rounded-full relative overflow-hidden shadow-inner">
+                <div 
+                  className="absolute top-0 bottom-0 bg-[#475569] rounded-full transition-all duration-150"
+                  style={{
+                    left: `${Math.max(0, Math.min(75, scrollProgress * 0.75))}%`,
+                    width: "25%"
+                  }}
+                />
+              </div>
+
+              {/* Right Arrow Icon Indicator */}
+              <button
+                onClick={() => scrollCategories("right")}
+                className="text-slate-500 hover:text-white pb-0.5 text-base font-bold select-none shrink-0 cursor-pointer active:scale-75 transition-all outline-none"
+                title="Slaidi Mbele"
+              >
+                &rsaquo;
+              </button>
+            </div>
+
+            {/* Channels List Header Section */}
+            <div className="flex justify-between items-center select-none pt-1">
+              <h2 id="home_channels_heading" className="text-sm font-extrabold text-slate-100 uppercase tracking-widest">
+                Channels
+              </h2>
+            </div>
+
+            {/* 2-Column Grid layout: exactly two channels per row (mstari mmoja una channels mbili kama pichani) */}
+            <div className="grid grid-cols-2 gap-4">
+              {filteredChannels.map((c) => (
+                <div
+                  key={c.id}
+                  id={`channel_card_${c.id}`}
+                  onClick={() => handlePlayChannel(c)}
+                  className="cursor-pointer group flex flex-col rounded-[20px] overflow-hidden border border-slate-800/80 bg-[#0f172a]/90 hover:border-blue-500/40 transition-all duration-300 shadow-xl relative"
+                >
+                  {/* Widescreen 16:9 Thumbnail Cover Image with badges */}
+                  <div className="w-full aspect-video overflow-hidden bg-slate-950 relative">
+                    <img
+                      src={c.poster || c.logo}
+                      alt={c.name}
+                      onError={(e) => {
+                        // Fallback in case of missing poster images
+                        (e.target as HTMLImageElement).src = c.logo;
+                      }}
+                      className="w-full h-full object-cover select-none group-hover:scale-[1.02] transition-all duration-500"
+                    />
+                    
+                    {/* Dark gradient shadow inside thumbnail bottom for readable text */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent pointer-events-none" />
+
+                    {/* LIVE Badge on top-left (red background, bold and uppercase) */}
+                    <span className="absolute top-2.5 left-2.5 bg-red-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider shadow z-10">
+                      LIVE
+                    </span>
+
+                    {/* FREE Badge on top-right (emerald green background, bold and uppercase) */}
+                    <span className="absolute top-2.5 right-2.5 bg-emerald-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider shadow z-10">
+                      FREE
+                    </span>
+                  </div>
+
+                  {/* Channel brand card bottom: dark row containing small circular logo & human-read text */}
+                  <div className="bg-[#0f172a]/95 px-3 py-3 flex items-center gap-2 border-t border-slate-800/40">
+                    {/* Circle avatar on left */}
+                    <img
+                      src={c.logo}
+                      alt=""
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none";
+                      }}
+                      className="w-[20px] h-[20px] rounded-full object-cover border border-slate-700/80 shrink-0 select-none"
+                    />
+                    
+                    {/* Fully human channel label without suffix codes */}
+                    <p className="flex-1 text-[11px] font-black font-sans text-slate-200 truncate leading-tight group-hover:text-blue-400 transition-all">
+                      {c.name}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+              {filteredChannels.length === 0 && (
+                <div className="col-span-2 text-center p-8 border border-slate-850 border-dashed rounded-xl text-slate-500 text-xs">
+                  Hakuna channel iliyopatikana kwenye kundi hili kwa sasa.
+                </div>
+              )}
+            </div>
           </div>
         )}
 

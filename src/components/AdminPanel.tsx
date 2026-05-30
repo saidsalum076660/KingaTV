@@ -72,7 +72,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
   // Channel Form States
   const [channelEditId, setChannelEditId] = useState<string | null>(null);
   const [chanName, setChanName] = useState("");
-  const [chanLogo, setChanLogo] = useState("");
   const [chanPoster, setChanPoster] = useState("");
   const [chanDesc, setChanDesc] = useState("");
   const [chanCategory, setChanCategory] = useState("Sports");
@@ -126,7 +125,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
       slideshowIntervalSeconds: Number(slideSpeed),
       updatedAt: new Date().toISOString()
     });
-    alert("Mipangilio imehifadhiwa kwa ufanisi!");
+    alert("TOKEN IMEHIFADHIWA TAYARI KWENYE MFUMO NA INAFANYA KAZI KIKAMILIFU!");
 
     // Attempt automatic sync right after saving connection details
     if (supabaseUrlInput && supabaseAnonKeyInput) {
@@ -191,7 +190,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     const itemData: Channel = {
       id: channelEditId || "CH-" + Math.random().toString(36).substring(2, 10),
       name: chanName,
-      logo: chanLogo || chanPoster || "https://images.unsplash.com/photo-1540747737956-378725752c03?w=120&q=80",
+      logo: chanPoster || "https://images.unsplash.com/photo-1540747737956-378725752c03?w=800&q=80",
       poster: chanPoster || "https://images.unsplash.com/photo-1540747737956-378725752c03?w=800&q=80",
       description: chanDesc,
       category: chanCategory,
@@ -212,14 +211,13 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
 
     localDb.saveChannels(updatedChannels);
     resetChannelForm();
-    alert("Kituo kimehifadhiwa!");
+    alert("KID, KEY NA LINK YA CHANNEL IMEHIFADHI TAYARI KWENYE MFUMO NA ZINAFANYA KAZI KIKAMILIFU!");
   };
 
   const handleEditChannel = (c: Channel) => {
     setChannelEditId(c.id);
     setChanName(c.name);
-    setChanLogo(c.logo);
-    setChanPoster(c.poster);
+    setChanPoster(c.poster || c.logo || "");
     setChanDesc(c.description);
     setChanCategory(c.category);
     setChanOrder(c.order);
@@ -237,10 +235,41 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
     }
   };
 
+  const handleDeleteAllChannels = async () => {
+    if (confirm("Je, una uhakika unataka kufuta vituo vyote vilivyopo? Kitendo hiki kitaondoa vituo vyote kwenye simu za wateja na kwenye wingu (Supabase)!\n\nSlaidi za Slideshow zitabaki salama zikiwa zimehifadhiwa kama zilivyo.")) {
+      try {
+        const channelIds = channels.map(c => c.id);
+        
+        // Wipe local storage
+        localDb.saveChannels([]);
+
+        // Mark them all as deleted so they don't resync back
+        try {
+          const deletedTrack = JSON.parse(localStorage.getItem("kingatv_deleted_channels") || "[]");
+          channelIds.forEach(id => {
+            if (!deletedTrack.includes(id)) {
+              deletedTrack.push(id);
+            }
+          });
+          localStorage.setItem("kingatv_deleted_channels", JSON.stringify(deletedTrack));
+        } catch (_) {}
+
+        // Sync deletion with Supabase in background
+        const m = await import("../supabase");
+        for (const id of channelIds) {
+          m.deleteChannelFromSupabase(id).catch(() => {});
+        }
+        
+        alert("Vituo vyote vimefutwa kwa mafanikio! Sasa unaweza kuanza kuongeza na kupanga upya vituo unavyotaka vya KINGA TV.");
+      } catch (err: any) {
+        alert("Hitilafu wakati wa kufuta vituo zote: " + err.message);
+      }
+    }
+  };
+
   const resetChannelForm = () => {
     setChannelEditId(null);
     setChanName("");
-    setChanLogo("");
     setChanPoster("");
     setChanDesc("");
     setChanCategory("Sports");
@@ -635,15 +664,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                 {countPending}
               </span>
             )}
-          </button>
-
-          <button
-            id="admin_nav_notifications"
-            onClick={() => setActiveTab("notifications")}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all cursor-pointer ${activeTab === "notifications" ? "bg-cyan-950/50 text-cyan-400 border-l-4 border-cyan-500" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
-          >
-            <Bell className="w-4 h-4" />
-            Push Announcements
           </button>
         </nav>
 
@@ -1051,14 +1071,27 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
           <div id="panel_channels" className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-extrabold text-white">Vituo vyote vya KINGA TV ({channels.length})</h2>
-              {channelEditId && (
-                <button 
-                  onClick={resetChannelForm}
-                  className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg hover:bg-slate-700 cursor-pointer"
-                >
-                  Futa fomu / Ongeza Mpya
-                </button>
-              )}
+              <div className="flex gap-2.5">
+                {channelEditId && (
+                  <button 
+                    onClick={resetChannelForm}
+                    className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg hover:bg-slate-700 cursor-pointer"
+                  >
+                    Futa fomu / Ongeza Mpya
+                  </button>
+                )}
+                {channels.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllChannels}
+                    className="px-4 py-1.5 bg-rose-950 border border-rose-800 hover:bg-rose-900 text-rose-300 hover:text-white text-xs font-black rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-red-950/20"
+                    title="Futia vituo vyote ili upange upya"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    FUTA VITUO VYOTE
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Channels Add/Edit Form */}
@@ -1078,7 +1111,108 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                     type="text"
                     required
                     value={chanName}
-                    onChange={(e) => setChanName(e.target.value)}
+                    onChange={(e) => {
+                      const nameVal = e.target.value;
+                      setChanName(nameVal);
+                      
+                      // Auto-detect Category based on Channel Name
+                      const lower = nameVal.toLowerCase();
+                      if (
+                        lower.includes("sinema zetu") || 
+                        lower.includes("sinemazetu")
+                      ) {
+                        setChanCategory("Movies");
+                      } else if (
+                        lower.includes("azam one") || 
+                        lower.includes("azamon") ||
+                        lower.includes("azam two") || 
+                        lower.includes("azamtw") ||
+                        lower.includes("azam_one") ||
+                        lower.includes("azam_two")
+                      ) {
+                        setChanCategory("Entertainment");
+                      } else if (
+                        lower.includes("sport") || 
+                        lower.includes("soka") || 
+                        lower.includes("michezo") || 
+                        lower.includes("mechi") || 
+                        lower.includes("mpira") || 
+                        lower.includes("football") || 
+                        lower.includes("futbol") || 
+                        lower.includes("soccer") || 
+                        lower.includes("supersport") || 
+                        lower.includes("ss") || 
+                        lower.includes("espn") || 
+                        lower.includes("bein") || 
+                        lower.includes("arena") || 
+                        lower.includes("ufc") || 
+                        lower.includes("wwe") || 
+                        lower.includes("simba") || 
+                        lower.includes("yanga") || 
+                        lower.includes("golf") || 
+                        lower.includes("tennis") || 
+                        lower.includes("kbc") || 
+                        lower.includes("tv3") || 
+                        lower.includes("gol") || 
+                        lower.includes("dstv") || 
+                        lower.includes("premier league") ||
+                        lower.includes("laliga")
+                      ) {
+                        setChanCategory("Sports");
+                      } else if (
+                        lower.includes("movie") || 
+                        lower.includes("movies") || 
+                        lower.includes("film") || 
+                        lower.includes("filamu") || 
+                        lower.includes("cinema") || 
+                        lower.includes("sinema") || 
+                        lower.includes("kix") || 
+                        lower.includes("hbo") || 
+                        lower.includes("action") || 
+                        lower.includes("bongo movie") || 
+                        lower.includes("hollywood") || 
+                        lower.includes("box office")
+                      ) {
+                        setChanCategory("Movies");
+                      } else if (
+                        lower.includes("series") || 
+                        lower.includes("season") || 
+                        lower.includes("tamthilia") || 
+                        lower.includes("novelas") || 
+                        lower.includes("telenovela") || 
+                        lower.includes("drama") || 
+                        lower.includes("episode") || 
+                        lower.includes("cartoon") || 
+                        lower.includes("kids")
+                      ) {
+                        setChanCategory("Series");
+                      } else if (
+                        lower.includes("news") || 
+                        lower.includes("habari") || 
+                        lower.includes("cnn") || 
+                        lower.includes("bbc") || 
+                        lower.includes("al jazeera") || 
+                        lower.includes("dw") || 
+                        lower.includes("sky") || 
+                        lower.includes("trt") || 
+                        lower.includes("itv") || 
+                        lower.includes("tbc") || 
+                        lower.includes("aljazeera")
+                      ) {
+                        setChanCategory("News");
+                      } else if (
+                        lower.includes("music") || 
+                        lower.includes("wimbo") || 
+                        lower.includes("nyimbo") || 
+                        lower.includes("comedy") || 
+                        lower.includes("wasafi") || 
+                        lower.includes("clouds") || 
+                        lower.includes("burudani") || 
+                        lower.includes("radio")
+                      ) {
+                        setChanCategory("Entertainment");
+                      }
+                    }}
                     placeholder="Mfano: KIXMovies, Azam Sports 1 HD"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
                   />
@@ -1113,39 +1247,33 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">Logo URL (Picha ya Mduara ya Kituo)</label>
-                  <input
-                    id="chan_logo_input"
-                    type="text"
-                    value={chanLogo}
-                    onChange={(e) => setChanLogo(e.target.value)}
-                    placeholder="e.g. https://domain.com/logo.png"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">Background Poster URL (Kipicha kikubwa)</label>
+                  <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1 text-cyan-400">Link ya Picha ya Channel (Poster / Logo URL)</label>
                   <input
                     id="chan_poster_input"
-                    type="text"
+                    type="url"
                     value={chanPoster}
                     onChange={(e) => setChanPoster(e.target.value)}
-                    placeholder="https://images.unsplash.com/photo-..."
+                    placeholder="Weka link ya picha ya channel hapa..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1 font-mono">Category</label>
-                  <input
+                  <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1 font-mono text-cyan-400">Category (Kundi)</label>
+                  <select
                     id="chan_cat_input"
-                    type="text"
                     value={chanCategory}
                     onChange={(e) => setChanCategory(e.target.value)}
-                    placeholder="Sports, Movies, Series, Miscellaneous"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                  />
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-sm text-white focus:border-cyan-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="Sports">Sports</option>
+                    <option value="Movies">Movies</option>
+                    <option value="News">News</option>
+                    <option value="Documentary">Documentary</option>
+                    <option value="Music">Music</option>
+                    <option value="Religious">Religious</option>
+                    <option value="Kids">Kids</option>
+                  </select>
                 </div>
 
                 <div>
@@ -1263,7 +1391,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                     {channels.map((c) => (
                       <tr key={c.id} className="hover:bg-slate-800/40">
                         <td className="p-4">
-                          <img src={c.logo} alt="" className="w-9 h-9 rounded-lg object-cover border border-slate-800" />
+                          <img src={c.poster || c.logo} alt="" className="w-9 h-9 rounded-lg object-cover border border-slate-800" />
                         </td>
                         <td className="p-4">
                           <div className="font-extrabold text-white">{c.name}</div>
@@ -1942,88 +2070,6 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 6: PUSH ANNOUNCEMENTS */}
-        {activeTab === "notifications" && (
-          <div id="panel_notifications" className="space-y-6 max-w-3xl">
-            <h2 className="text-xl font-extrabold text-white">Sukuma Taarifa na Matangazo ya Global (Push Messages)</h2>
-            
-            <form onSubmit={handleSendNotification} className="p-6 bg-slate-900 border border-slate-800 rounded-xl space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                <Bell className="w-5 h-5 text-cyan-400 animate-swing" />
-                <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">
-                  Tuma Tangazo Mpya kwa Skrini zote za KINGA TV
-                </h3>
-              </div>
-
-              <div>
-                <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">Kichwa cha Tangazo / Title *</label>
-                <input
-                  id="notif_title_input"
-                  type="text"
-                  required
-                  value={notifTitle}
-                  onChange={(e) => setNotifTitle(e.target.value)}
-                  placeholder="e.g. TAARIFA MAALUM: Mechi ya Leo"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">Ujumbe / Notification Message *</label>
-                <textarea
-                  id="notif_msg_textarea"
-                  required
-                  value={notifMessage}
-                  onChange={(e) => setNotifMessage(e.target.value)}
-                  placeholder="Andika taarifa ya utengenezaji, promo, namba za malipo ya mitandao hapa..."
-                  rows={4}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <button
-                  id="send_notif_btn"
-                  type="submit"
-                  className="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-xl shadow-lg transition-transform active:scale-95 cursor-pointer"
-                >
-                  SUKUMA TANGAZO SASA
-                </button>
-              </div>
-            </form>
-
-            {/* Existing notifications logs */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Matangazo yaliyopita</h3>
-              
-              {notifications.map((n) => (
-                <div key={n.id} className="p-4 bg-slate-900 border border-slate-800 rounded-lg flex items-start justify-between gap-4">
-                  <div>
-                    <span className="text-[10px] font-mono text-slate-500 block mb-0.5">
-                      {new Date(n.createdAt).toLocaleDateString()} {new Date(n.createdAt).toLocaleTimeString()}
-                    </span>
-                    <h5 className="font-extrabold text-white text-sm">{n.title}</h5>
-                    <p className="text-slate-300 text-xs mt-1 whitespace-pre-wrap leading-relaxed">{n.message}</p>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteNotification(n.id)}
-                    className="p-1.5 text-rose-400 hover:bg-red-950 rounded cursor-pointer shrink-0"
-                    title="Futa Ujumbe"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-
-              {notifications.length === 0 && (
-                <div className="p-6 text-center border border-dashed border-slate-800 rounded-lg text-slate-500 text-xs">
-                  Hakuna ujumbe uliosukumwa kwa sasa.
-                </div>
-              )}
             </div>
           </div>
         )}

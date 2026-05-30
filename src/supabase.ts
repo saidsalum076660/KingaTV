@@ -405,16 +405,16 @@ export async function syncDatabaseWithSupabase(): Promise<boolean> {
         if (lc) {
           // If the local channel is modified compared to Supabase, preserve user's local edits as the source of truth!
           const isLocalModified = 
-            (lc.clearKeyKid || "") !== (rc.clear_key_kid || "") ||
-            (lc.clearKeyKey || "") !== (rc.clear_key_key || "") ||
-            (lc.streamUrl || "") !== (rc.stream_url || "") ||
-            (lc.name || "") !== (rc.name || "") ||
-            (lc.logo || "") !== (rc.logo || "") ||
-            (lc.poster || "") !== (rc.poster || "") ||
-            (lc.description || "") !== (rc.description || "") ||
-            (lc.category || "") !== (rc.category || "") ||
+            (lc.clearKeyKid || "").trim() !== (rc.clear_key_kid || "").trim() ||
+            (lc.clearKeyKey || "").trim() !== (rc.clear_key_key || "").trim() ||
+            (lc.streamUrl || "").trim() !== (rc.stream_url || "").trim() ||
+            (lc.name || "").trim() !== (rc.name || "").trim() ||
+            (lc.logo || "").trim() !== (rc.logo || "").trim() ||
+            (lc.poster || "").trim() !== (rc.poster || "").trim() ||
+            (lc.description || "").trim() !== (rc.description || "").trim() ||
+            (lc.category || "").trim() !== (rc.category || "").trim() ||
             (lc.order || 0) !== (rc.order || 0) ||
-            (lc.streamType || "") !== (rc.stream_type || "") ||
+            (lc.streamType || "").trim() !== (rc.stream_type || "").trim() ||
             (lc.useGlobalToken || false) !== (rc.use_global_token || false);
 
           if (isLocalModified) {
@@ -430,21 +430,25 @@ export async function syncDatabaseWithSupabase(): Promise<boolean> {
             finalStreamType = lc.streamType;
             finalUseGlobalToken = lc.useGlobalToken;
 
-            // Push those local edits up to Supabase in the background
-            client.from("ktv_channels").upsert({
-              id: lc.id,
-              name: lc.name,
-              logo: lc.logo,
-              poster: lc.poster,
-              description: lc.description,
-              category: lc.category,
-              order: lc.order,
-              stream_type: lc.streamType,
-              stream_url: lc.streamUrl,
-              clear_key_kid: lc.clearKeyKid,
-              clear_key_key: lc.clearKeyKey,
-              use_global_token: lc.useGlobalToken
-            }).then(() => {}, () => {});
+            // Push those local edits up to Supabase and await them to succeed
+            try {
+              await client.from("ktv_channels").upsert({
+                id: lc.id,
+                name: lc.name,
+                logo: lc.logo,
+                poster: lc.poster,
+                description: lc.description,
+                category: lc.category,
+                order: lc.order,
+                stream_type: lc.streamType,
+                stream_url: lc.streamUrl,
+                clear_key_kid: lc.clearKeyKid,
+                clear_key_key: lc.clearKeyKey,
+                use_global_token: lc.useGlobalToken
+              });
+            } catch (errCh) {
+              console.warn("Marekebisho ya channel kushindwa kuingia Supabase:", errCh);
+            }
           }
         }
 
@@ -601,20 +605,44 @@ export async function syncDatabaseWithSupabase(): Promise<boolean> {
     const localConf = localDb.getGlobalConfig();
     const { data: remoteConf, error: errCO } = await client.from("ktv_config").select("*").eq("id", "global_settings").maybeSingle();
     if (!errCO && remoteConf) {
-      const mergedConfig: GlobalConfig = {
-        globalToken: remoteConf.global_token,
-        appLogo: remoteConf.app_logo,
-        supabaseUrl: localConf.supabaseUrl, // Keep current working DB credential references locally
-        supabaseAnonKey: localConf.supabaseAnonKey,
-        updatedAt: remoteConf.updated_at
-      };
-      localStorage.setItem("kingatv_config", JSON.stringify(mergedConfig));
+      const localTime = localConf.updatedAt ? new Date(localConf.updatedAt).getTime() : 0;
+      const remoteTime = remoteConf.updated_at ? new Date(remoteConf.updated_at).getTime() : 0;
+      
+      if (localTime >= remoteTime) {
+        // Local configuration is newer or equal (edited in Admin Dashboard): Push local changes to Supabase!
+        const finalToken = localConf.globalToken?.trim() || remoteConf.global_token?.trim() || "";
+        await client.from("ktv_config").upsert({
+          id: "global_settings",
+          global_token: finalToken,
+          app_logo: localConf.appLogo || remoteConf.app_logo || "",
+          updated_at: localConf.updatedAt
+        });
+      } else {
+        // Remote configuration is newer: Pull remote configuration to local storage!
+        // BUT protect the token: do not overwrite a custom local token with remote token
+        const isCustom = localStorage.getItem("kingatv_token_is_custom") === "true";
+        const finalToken = isCustom 
+          ? (localStorage.getItem("kingatv_user_saved_token") || remoteConf.global_token?.trim() || "")
+          : (remoteConf.global_token?.trim() || localConf.globalToken?.trim() || "");
+
+        const mergedConfig: GlobalConfig = {
+          globalToken: finalToken,
+          appLogo: remoteConf.app_logo || localConf.appLogo || "",
+          supabaseUrl: localConf.supabaseUrl, // Keep current working DB credential references locally
+          supabaseAnonKey: localConf.supabaseAnonKey,
+          updatedAt: remoteConf.updated_at
+        };
+        localStorage.setItem("kingatv_config", JSON.stringify(mergedConfig));
+        if (finalToken) {
+          localStorage.setItem("kingatv_user_saved_token", finalToken);
+        }
+      }
     } else {
       // Upload local config
       await client.from("ktv_config").upsert({
         id: "global_settings",
-        global_token: localConf.globalToken,
-        app_logo: localConf.appLogo,
+        global_token: localConf.globalToken || "",
+        app_logo: localConf.appLogo || "",
         updated_at: localConf.updatedAt
       });
     }

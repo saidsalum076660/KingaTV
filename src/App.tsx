@@ -22,6 +22,7 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   const [appLogo, setAppLogo] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(false);
 
   // Load current user session on mount
   useEffect(() => {
@@ -53,7 +54,7 @@ export default function App() {
   }, []);
 
   // Authentication handlers
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
     setAuthSuccessMsg(null);
@@ -69,22 +70,24 @@ export default function App() {
       return;
     }
 
+    setIsLoading(true);
     try {
       if (isRegister) {
         if (!firstNameInput.trim() || !lastNameInput.trim() || !phoneInput) {
           setAuthError("Tafadhali jaza majina yako na namba ya simu zote.");
+          setIsLoading(false);
           return;
         }
         const fullName = `${firstNameInput.trim()} ${lastNameInput.trim()}`;
         // Register but do NOT do autoLogin (pass autoLogin as false)
-        localAuth.register(fullName, trimmedEmail, phoneInput, UserStatus.PENDING, passwordInput, false);
+        await localAuth.register(fullName, trimmedEmail, phoneInput, UserStatus.PENDING, passwordInput, false);
         
         // Success: Redirect back to login screen
         setAuthSuccessMsg("Usajili umefanikiwa! Sasa tafadhali ingia hapa chini kwa kutumia barua pepe na nenosiri lako.");
         setIsRegister(false);
         setPasswordInput("");
       } else {
-        const user = localAuth.login(trimmedEmail, passwordInput);
+        const user = await localAuth.login(trimmedEmail, passwordInput);
         setCurrentUser(user);
         
         // Auto routing to admin if login matches admin account
@@ -95,11 +98,13 @@ export default function App() {
       }
     } catch (err: any) {
       setAuthError(err.message || "Kosa la kiufundi limetokea. Jaribu tena.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    localAuth.logout();
+  const handleLogout = async () => {
+    await localAuth.logout();
     setCurrentUser(null);
     setIsAdminMode(false);
     resetAuthForm();
@@ -334,9 +339,17 @@ export default function App() {
             <button
               id="auth_submit_btn"
               type="submit"
-              className="w-full mt-2 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 font-black text-xs sm:text-sm text-white uppercase rounded-xl tracking-widest shadow-[0_4px_24px_rgba(59,130,246,0.35)] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-blue-400/20"
+              disabled={isLoading}
+              className="w-full mt-2 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 font-black text-xs sm:text-sm text-white uppercase rounded-xl tracking-widest shadow-[0_4px_24px_rgba(59,130,246,0.35)] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-blue-400/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isRegister ? "JISAJILI" : "INGIA"}
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  TAFADHALI SUBIRI...
+                </span>
+              ) : (
+                isRegister ? "JISAJILI" : "INGIA"
+              )}
             </button>
           </form>
  

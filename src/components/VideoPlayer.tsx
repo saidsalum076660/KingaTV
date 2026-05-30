@@ -38,10 +38,15 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
   const [showQualityMenu, setShowQualityMenu] = useState(false);
 
   const [languages, setLanguages] = useState<{ id: string; label: string; nativeLabel: string }[]>([
-    { id: "swahili", label: "Swahili", nativeLabel: "Kiswahili" },
-    { id: "english", label: "English", nativeLabel: "Kiingereza" },
+    { id: "auto", label: "Auto", nativeLabel: "Auto" },
+    { id: "english", label: "English", nativeLabel: "English" },
+    { id: "kirundi", label: "Kirundi", nativeLabel: "Kirundi" },
+    { id: "chichewa", label: "Chichewa", nativeLabel: "Chichewa" },
+    { id: "kinyarwanda", label: "Kinyarwanda", nativeLabel: "Kinyarwanda" },
+    { id: "swahili", label: "Swahili", nativeLabel: "Swahili" },
   ]);
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("swahili");
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("auto");
+  const [selectedSubtitle, setSelectedSubtitle] = useState<string>("off");
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
 
   const [toastText, setToastText] = useState<string | null>(null);
@@ -87,20 +92,7 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
       // 2. Get Audio Languages
       const langs = player.getAudioLanguages();
       if (langs && langs.length > 0) {
-        const detectedLangs = langs.map(l => {
-          let label = l;
-          let nativeLabel = l;
-          const lower = l.toLowerCase();
-          if (lower.startsWith("sw") || lower.startsWith("kis")) {
-            label = "Swahili";
-            nativeLabel = "Kiswahili";
-          } else if (lower.startsWith("en") || lower.startsWith("eng")) {
-            label = "English";
-            nativeLabel = "Kiingereza";
-          }
-          return { id: l, label, nativeLabel };
-        });
-        setLanguages(detectedLangs);
+        console.log("Mifumo ya sauti inayopatikana:", langs);
       }
     } catch (err) {
       console.warn("Failed to read shaka tracks:", err);
@@ -142,27 +134,76 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
 
   const handleLanguageChange = (langId: string) => {
     setSelectedLanguage(langId);
-    setShowLanguageMenu(false);
+    
+    const labelMap: Record<string, string> = {
+      auto: "Auto",
+      english: "English",
+      kirundi: "Kirundi",
+      chichewa: "Chichewa",
+      kinyarwanda: "Kinyarwanda",
+      swahili: "Swahili"
+    };
+    
+    const label = labelMap[langId] || langId;
+
+    if (player) {
+      try {
+        if (langId === "auto") {
+          player.configure({ preferredAudioLanguage: "" });
+          showToast("Lugha tayari ni: Auto");
+          return;
+        }
+        const langs = player.getAudioLanguages();
+        
+        const prefixMap: Record<string, string[]> = {
+          swahili: ["sw", "kis", "msa"],
+          english: ["en", "eng"],
+          kirundi: ["rn", "run", "kir"],
+          chichewa: ["ny", "nya", "chi"],
+          kinyarwanda: ["rw", "kin", "rwany"]
+        };
+
+        const prefixes = prefixMap[langId] || [langId.substring(0, 2)];
+        
+        const match = langs.find(l => {
+          const lower = l.toLowerCase();
+          return prefixes.some(pref => lower === pref || lower.startsWith(pref));
+        });
+
+        if (match) {
+          player.selectAudioLanguage(match);
+          showToast(`Lugha imebadilishwa kwenda: ${label}`);
+        } else {
+          const fallbackCode = prefixes[0] || langId.substring(0, 2);
+          player.selectAudioLanguage(fallbackCode);
+          showToast(`Umechagua lugha ya utangazaji: ${label}`);
+        }
+      } catch (err) {
+        showToast(`Umechagua lugha ya utangazaji: ${label}`);
+      }
+    } else {
+      showToast(`Umechagua lugha ya utangazaji: ${label}`);
+    }
+  };
+
+  const handleSubtitleChange = (subId: string) => {
+    setSelectedSubtitle(subId);
     
     if (player) {
       try {
-        const langs = player.getAudioLanguages();
-        const match = langs.find(l => l === langId || l.toLowerCase().startsWith(langId.substring(0, 2)));
-        if (match) {
-          player.selectAudioLanguage(match);
-          const label = langId === "swahili" || langId.startsWith("sw") ? "Kiswahili" : "Kiingereza";
-          showToast(`Lugha tayari ni: ${label}`);
+        if (subId === "off") {
+          player.setTextTrackVisibility(false);
+          showToast("Subtitles zimezimwa (Off)");
         } else {
-          const label = langId === "swahili" ? "Kiswahili (Swahili)" : "Kiingereza (English)";
-          showToast(`Umechagua lugha ya utangazaji ya: ${label}`);
+          player.setTextTrackVisibility(true);
+          player.selectTextLanguage("en");
+          showToast("Subtitles zimewekwa: English");
         }
       } catch (err) {
-        const label = langId === "swahili" ? "Kiswahili" : "Kiingereza";
-        showToast(`Umechagua lugha ya utangazaji ya: ${label}`);
+        showToast(subId === "off" ? "Subtitles: Off" : "Subtitles: English");
       }
     } else {
-      const label = langId === "swahili" ? "Kiswahili" : "Kiingereza";
-      showToast(`Umechagua lugha ya utangazaji ya: ${label}`);
+      showToast(subId === "off" ? "Subtitles: Off" : "Subtitles: English");
     }
   };
 
@@ -198,10 +239,10 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
     return () => clearInterval(timer);
   }, [isPending, isPlaying, user, onTimeExpired, onTimeUpdate]);
 
-  // Append global token if requested
+  // Append global token to play all channels
   const getStreamUrl = () => {
     let url = channel.streamUrl;
-    if (channel.useGlobalToken) {
+    if (channel.useGlobalToken !== false) {
       const config = localDb.getGlobalConfig();
       const token = config?.globalToken?.trim();
       if (token) {
@@ -436,39 +477,108 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
 
       {/* Quality Dropdown Menu */}
       {showQualityMenu && (
-        <div className="absolute bottom-14 right-14 sm:right-24 bg-slate-950/95 border border-slate-800 rounded-xl p-2.5 min-w-[120px] shadow-2xl z-20 flex flex-col gap-1 text-xs text-slate-200">
-          <div className="font-bold border-b border-slate-800 pb-1.5 text-[10px] uppercase tracking-wider text-slate-400 text-center">Ubora (Quality)</div>
-          {qualities.map((q) => (
-            <button
-              key={q.id}
-              type="button"
-              onClick={() => handleQualityChange(q.id)}
-              className={`w-full py-1 px-2.5 rounded text-left transition-colors font-semibold hover:bg-slate-800 cursor-pointer ${
-                selectedQuality === q.id ? "text-cyan-400 font-black bg-slate-900" : ""
-              }`}
-            >
-              {q.label}
-            </button>
-          ))}
+        <div className="absolute bottom-14 right-2 sm:right-24 bg-[#111c2a]/95 border border-slate-800/80 rounded-2xl p-4 min-w-[160px] max-h-[250px] overflow-y-auto scrollbar-thin shadow-[0_20px_50px_rgba(0,0,0,0.55)] z-20 flex flex-col gap-4 text-xs select-none">
+          <div className="flex flex-col">
+            <h4 className="text-[12px] font-extrabold tracking-wider text-sky-400 uppercase mb-2">Video Quality</h4>
+            <div className="flex flex-col gap-2">
+              {qualities.map((q) => {
+                const isActive = selectedQuality === q.id;
+                // strip out " HD" or " SD" or " Low" to match user's image exactly (e.g. 1080p, 720p, 480p, 360p)
+                const displayLabel = q.label.replace(/\s*(?:HD|SD|Low|\s)/gi, "");
+                return (
+                  <button
+                    key={q.id}
+                    type="button"
+                    onClick={() => handleQualityChange(q.id)}
+                    className="flex items-center gap-3.5 group cursor-pointer text-left focus:outline-none"
+                  >
+                    <div className={`w-[18px] h-[18px] rounded-full border flex items-center justify-center transition-all duration-200 shrink-0 ${
+                      isActive ? "border-sky-400 bg-sky-950/20" : "border-slate-600 group-hover:border-slate-400"
+                    }`}>
+                      {isActive && (
+                        <div className="w-[8px] h-[8px] rounded-full bg-sky-400 shadow-md shadow-sky-400/40" />
+                      )}
+                    </div>
+                    <span className={`text-[13px] tracking-wide transition-colors ${
+                      isActive ? "text-white font-black" : "text-slate-300 group-hover:text-white font-semibold"
+                    }`}>
+                      {displayLabel}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
       {/* Language Selection Dropdown Menu */}
       {showLanguageMenu && (
-        <div className="absolute bottom-14 right-20 sm:right-48 bg-slate-950/95 border border-slate-800 rounded-xl p-2.5 min-w-[140px] shadow-2xl z-20 flex flex-col gap-1 text-xs text-slate-200">
-          <div className="font-bold border-b border-slate-800 pb-1.5 text-[10px] uppercase tracking-wider text-slate-400 text-center">Lugha (Audio)</div>
-          {languages.map((l) => (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => handleLanguageChange(l.id)}
-              className={`w-full py-1 px-2.5 rounded text-left transition-colors font-semibold hover:bg-slate-800 cursor-pointer ${
-                selectedLanguage === l.id ? "text-blue-400 font-black bg-slate-900" : ""
-              }`}
-            >
-              <span>{l.nativeLabel}</span> <span className="text-[9px] text-slate-500 font-normal">({l.label})</span>
-            </button>
-          ))}
+        <div className="absolute bottom-14 right-2 sm:right-28 bg-[#111c2a]/95 border border-slate-800/80 rounded-2xl p-4 min-w-[170px] max-h-[150px] sm:max-h-[250px] overflow-y-auto scrollbar-thin shadow-[0_20px_50px_rgba(0,0,0,0.55)] z-20 flex flex-col gap-4 text-xs select-none">
+          {/* Audio Section */}
+          <div className="flex flex-col">
+            <h4 className="text-[12px] font-extrabold tracking-wider text-sky-400 uppercase mb-2">Audio</h4>
+            <div className="flex flex-col gap-2">
+              {languages.map((l) => {
+                const isActive = selectedLanguage === l.id;
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => handleLanguageChange(l.id)}
+                    className="flex items-center gap-3.5 group cursor-pointer text-left focus:outline-none"
+                  >
+                    <div className={`w-[18px] h-[18px] rounded-full border flex items-center justify-center transition-all duration-200 shrink-0 ${
+                      isActive ? "border-sky-400 bg-sky-950/20" : "border-slate-600 group-hover:border-slate-400"
+                    }`}>
+                      {isActive && (
+                        <div className="w-[8px] h-[8px] rounded-full bg-sky-400 shadow-md shadow-sky-400/40" />
+                      )}
+                    </div>
+                    <span className={`text-[13px] tracking-wide transition-colors ${
+                      isActive ? "text-white font-black" : "text-slate-300 group-hover:text-white font-semibold"
+                    }`}>
+                      {l.nativeLabel}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Subtitles Section */}
+          <div className="flex flex-col border-t border-slate-800/60 pt-3">
+            <h4 className="text-[12px] font-extrabold tracking-wider text-sky-400 uppercase mb-2">Subtitles</h4>
+            <div className="flex flex-col gap-2">
+              {[
+                { id: "english", label: "English" },
+                { id: "off", label: "off" }
+              ].map((sub) => {
+                const isActive = selectedSubtitle === sub.id;
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => handleSubtitleChange(sub.id)}
+                    className="flex items-center gap-3.5 group cursor-pointer text-left focus:outline-none"
+                  >
+                    <div className={`w-[18px] h-[18px] rounded-full border flex items-center justify-center transition-all duration-200 shrink-0 ${
+                      isActive ? "border-sky-400 bg-sky-950/20" : "border-slate-600 group-hover:border-slate-400"
+                    }`}>
+                      {isActive && (
+                        <div className="w-[8px] h-[8px] rounded-full bg-sky-400 shadow-md shadow-sky-400/40" />
+                      )}
+                    </div>
+                    <span className={`text-[13px] tracking-wide transition-colors ${
+                      isActive ? "text-white font-black" : "text-slate-300 group-hover:text-white font-semibold"
+                    }`}>
+                      {sub.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -571,7 +681,7 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Audio Language Commentary Track Switch */}
+             {/* Audio Language Commentary Track Switch */}
             <div className="relative">
               <button
                 id="video_language_toggle"
@@ -579,13 +689,13 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
                   setShowLanguageMenu(!showLanguageMenu);
                   setShowQualityMenu(false);
                 }}
-                className={`p-1.5 sm:px-2.5 sm:py-1 hover:bg-slate-800/90 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1 cursor-pointer font-sans text-xs ${showLanguageMenu ? "bg-slate-800 text-white border border-blue-500/30" : ""}`}
+                className={`p-1.5 sm:px-2.5 sm:py-1 hover:bg-slate-800/90 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1 cursor-pointer font-sans text-[10px] ${showLanguageMenu ? "bg-slate-800 text-white border border-blue-500/30" : ""}`}
               >
-                <Languages className="w-4 h-4 text-blue-400" />
-                <span className="text-[10px] font-black uppercase tracking-wider hidden sm:inline-block">
-                  {languages.find(l => l.id === selectedLanguage)?.nativeLabel || "Lugha"}
+                <Languages className="w-3.5 h-3.5 text-blue-400" />
+                <span className="font-extrabold uppercase tracking-wide">
+                  {languages.find(l => l.id === selectedLanguage)?.nativeLabel || "Auto"}
                 </span>
-                <ChevronDown className="w-3 h-3 text-slate-500" />
+                <ChevronDown className="w-2.5 h-2.5 text-slate-500 font-bold" />
               </button>
             </div>
 
@@ -597,13 +707,13 @@ export default function VideoPlayer({ channel, user, onTimeExpired, onTimeUpdate
                   setShowQualityMenu(!showQualityMenu);
                   setShowLanguageMenu(false);
                 }}
-                className={`p-1.5 sm:px-2.5 sm:py-1 hover:bg-slate-800/90 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1 cursor-pointer font-sans text-xs ${showQualityMenu ? "bg-slate-800 text-white border border-cyan-500/30" : ""}`}
+                className={`p-1.5 sm:px-2.5 sm:py-1 hover:bg-slate-800/90 rounded-lg text-slate-300 hover:text-white transition-all flex items-center gap-1 cursor-pointer font-sans text-[10px] ${showQualityMenu ? "bg-slate-800 text-white border border-cyan-500/30" : ""}`}
               >
-                <Settings className="w-4 h-4 text-cyan-400" />
-                <span className="text-[10px] font-black uppercase tracking-wider hidden sm:inline-block">
-                  {qualities.find(q => q.id === selectedQuality)?.label || "Ubora"}
+                <Settings className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="font-extrabold uppercase tracking-wide">
+                  {qualities.find(q => q.id === selectedQuality)?.label || "Auto"}
                 </span>
-                <ChevronDown className="w-3 h-3 text-slate-500" />
+                <ChevronDown className="w-2.5 h-2.5 text-slate-500 font-bold" />
               </button>
             </div>
 
